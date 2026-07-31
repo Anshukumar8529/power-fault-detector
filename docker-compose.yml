@@ -1,0 +1,13 @@
+# docker-compose.yml
+#
+# This is what makes "docker compose up" work as a single command.
+# Right now we have one service (the Flask app). Later, if we add a
+# database, it would get its own service block here.
+
+services:
+  api:
+    build: .
+    ports:
+      - "5000:5000"   # host_port:container_port - lets you open localhost:5000 in your browser
+    volumes:
+      - .:/app        # mirrors your local code into the container (handy for development)
