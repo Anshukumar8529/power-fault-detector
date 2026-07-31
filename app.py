@@ -1,16 +1,27 @@
 from flask import Flask, request, jsonify
 from telemetry_ingest import reduce_telemetry_to_pole_states
 from fault_engine import find_faults, load_topology_from_csv
+from simulator import Simulator
 
 app = Flask(__name__)
 
 # Load topology ONCE at startup, from the CSV registry (not hardcoded anymore)
 topology, topo_confidence = load_topology_from_csv("pole_registry.csv")
+sim = Simulator("pole_registry.csv")
 
 # Server memory
 telemetry = []
 latest_pole_state = {}
 latest_faults = []
+
+
+def _process_new_messages(messages):
+    """Feed a batch of telemetry messages through the same pipeline
+    real device data goes through, and refresh latest state/faults."""
+    global latest_pole_state, latest_faults
+    telemetry.extend(messages)
+    latest_pole_state = reduce_telemetry_to_pole_states(telemetry)
+    latest_faults = find_faults(latest_pole_state, topology, topo_confidence)
 
 
 @app.route("/")
@@ -50,6 +61,50 @@ def get_topology():
     return jsonify({
         "topology": topology,
         "confidence": topo_confidence
+    })
+
+
+# ---- Simulator endpoints: this is how we (and the evaluator) test the system ----
+
+@app.route("/simulator/inject-fault", methods=["POST"])
+def inject_fault():
+    body = request.get_json()
+    pole_id = body.get("pole_id")
+
+    try:
+        messages = sim.inject_fault(pole_id)
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    _process_new_messages(messages)
+
+    return jsonify({
+        "status": "success",
+        "message": f"Fault injected at {pole_id}",
+        "generated_telemetry": messages,
+        "current_pole_state": latest_pole_state,
+        "faults": latest_faults
+    })
+
+
+@app.route("/simulator/repair-fault", methods=["POST"])
+def repair_fault():
+    body = request.get_json()
+    pole_id = body.get("pole_id")
+
+    try:
+        messages = sim.repair_fault(pole_id)
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+    _process_new_messages(messages)
+
+    return jsonify({
+        "status": "success",
+        "message": f"Fault repaired at {pole_id}",
+        "generated_telemetry": messages,
+        "current_pole_state": latest_pole_state,
+        "faults": latest_faults
     })
 
 
