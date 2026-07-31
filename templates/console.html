@@ -61,6 +61,13 @@
     font-size: 16px;
     font-weight: 600;
   }
+  .fault-card .ai-summary {
+    font-size: 13px;
+    color: var(--text);
+    margin-top: 4px;
+    opacity: 0.85;
+    font-style: italic;
+  }
   .fault-card .meta {
     font-size: 13px;
     color: var(--muted);
@@ -171,6 +178,7 @@ async function refreshFaults() {
   container.innerHTML = faults.map(f => `
     <div class="fault-card">
       <div class="span">${f.span}</div>
+      <div class="ai-summary">${f.summary || ''}</div>
       <div class="meta">
         <span>${f.downstream_affected} pole(s) affected</span>
         <span class="badge ${f.confidence === 'high' ? 'high' : 'low'}">

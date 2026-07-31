@@ -2,17 +2,33 @@ from flask import Flask, request, jsonify, render_template
 from telemetry_ingest import reduce_telemetry_to_pole_states
 from fault_engine import find_faults, load_topology_from_csv
 from simulator import Simulator
+from scheduled_outages import ScheduledOutageRegistry
+from ai_summary import generate_fault_summary
 
 app = Flask(__name__)
 
 # Load topology ONCE at startup, from the CSV registry (not hardcoded anymore)
 topology, topo_confidence = load_topology_from_csv("pole_registry.csv")
 sim = Simulator("pole_registry.csv")
+outage_registry = ScheduledOutageRegistry()
+
+# pole_id -> {dt_id, feeder_id}, needed to check scheduled-outage coverage
+pole_meta = {p["pole_id"]: {"dt_id": p["dt_id"], "feeder_id": p["feeder_id"]} for p in sim.poles}
 
 # Server memory
 telemetry = []
 latest_pole_state = {}
 latest_faults = []
+summary_cache = {}  # span -> summary text, so we don't re-call the LLM every poll
+
+
+def _attach_summaries(faults):
+    for fault in faults:
+        span = fault["span"]
+        if span not in summary_cache:
+            summary_cache[span] = generate_fault_summary(fault)
+        fault["summary"] = summary_cache[span]
+    return faults
 
 
 def _process_new_messages(messages):
@@ -21,12 +37,16 @@ def _process_new_messages(messages):
     global latest_pole_state, latest_faults
     telemetry.extend(messages)
     latest_pole_state = reduce_telemetry_to_pole_states(telemetry)
-    latest_faults = find_faults(latest_pole_state, topology, topo_confidence)
+    faults = find_faults(
+        latest_pole_state, topology, topo_confidence,
+        pole_meta=pole_meta, outage_registry=outage_registry
+    )
+    latest_faults = _attach_summaries(faults)
 
 
 @app.route("/")
 def home():
-    return "Power Fault Detector API Running"
+    return 'Power Fault Detector API Running — <a href="/dashboard">Open Operator Console</a>'
 
 
 @app.route("/dashboard")
@@ -83,6 +103,27 @@ def get_poles():
             "energized": latest_pole_state.get(pid, True),  # assume live if never reported
         })
     return jsonify({"poles": pole_list})
+
+
+# ---- Scheduled outages: mocks the department's GET /scheduled-outages feed ----
+
+@app.route("/scheduled-outages", methods=["GET", "POST"])
+def scheduled_outages():
+    global latest_faults
+
+    if request.method == "POST":
+        body = request.get_json()
+        outage_registry.load(body.get("outages", []))
+        # Re-run fault detection so an outage set right now immediately
+        # suppresses any matching faults already showing.
+        faults = find_faults(
+            latest_pole_state, topology, topo_confidence,
+            pole_meta=pole_meta, outage_registry=outage_registry
+        )
+        latest_faults = _attach_summaries(faults)
+        return jsonify({"status": "success", "outages": outage_registry.outages})
+
+    return jsonify({"outages": outage_registry.outages})
 
 
 # ---- Simulator endpoints: this is how we (and the evaluator) test the system ----

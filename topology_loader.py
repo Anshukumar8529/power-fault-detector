@@ -24,6 +24,7 @@ def load_pole_registry(csv_path):
                 "lat": float(row["lat"]),
                 "lon": float(row["lon"]),
                 "dt_id": row["dt_id"],
+                "feeder_id": row["feeder_id"],
                 "parent_pole_id": row["parent_pole_id"] or None,
                 "seq_on_line": row["seq_on_line"] or None,
                 "pincode": row["pincode"] or None,

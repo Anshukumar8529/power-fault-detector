@@ -27,7 +27,11 @@ def collect_dark_descendants(pole_id, pole_state, children_of):
     return count
 
 
-def find_faults(pole_state, topology, confidence):
+def find_faults(pole_state, topology, confidence, pole_meta=None, outage_registry=None):
+    """
+    pole_meta: optional {pole_id: {"dt_id": ..., "feeder_id": ...}} - required
+    only if outage_registry is passed, to check scheduled-outage suppression.
+    """
     children_of = build_children_map(topology)
     faults = []
 
@@ -47,6 +51,15 @@ def find_faults(pole_state, topology, confidence):
 
         if all_children_live:
             continue  # likely a bad sensor, not a real fault
+
+        # Scheduled outage check: if this pole's DT or feeder is under a
+        # published maintenance/load-shedding window right now, this is
+        # expected darkness, not a fault - suppress the ticket.
+        if outage_registry and pole_meta and pole_id in pole_meta:
+            meta = pole_meta[pole_id]
+            if outage_registry.is_covered(meta["dt_id"], "dt") or \
+               outage_registry.is_covered(meta["feeder_id"], "feeder"):
+                continue
 
         downstream_count = collect_dark_descendants(pole_id, pole_state, children_of)
 
