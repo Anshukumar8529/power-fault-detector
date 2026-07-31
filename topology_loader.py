@@ -27,6 +27,7 @@ def load_pole_registry(csv_path):
                 "parent_pole_id": row["parent_pole_id"] or None,
                 "seq_on_line": row["seq_on_line"] or None,
                 "pincode": row["pincode"] or None,
+                "device_id": row["device_id"] or None,
             })
     return poles
 
