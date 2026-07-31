@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from telemetry_ingest import reduce_telemetry_to_pole_states
 from fault_engine import find_faults, load_topology_from_csv
 from simulator import Simulator
@@ -27,6 +27,11 @@ def _process_new_messages(messages):
 @app.route("/")
 def home():
     return "Power Fault Detector API Running"
+
+
+@app.route("/dashboard")
+def console():
+    return render_template("console.html")
 
 
 @app.route("/telemetry", methods=["POST"])
@@ -62,6 +67,22 @@ def get_topology():
         "topology": topology,
         "confidence": topo_confidence
     })
+
+
+# All known poles with their current state - used by the operator console
+@app.route("/poles", methods=["GET"])
+def get_poles():
+    pole_list = []
+    for pole in sim.poles:
+        pid = pole["pole_id"]
+        pole_list.append({
+            "pole_id": pid,
+            "lat": pole["lat"],
+            "lon": pole["lon"],
+            "pincode": pole["pincode"],
+            "energized": latest_pole_state.get(pid, True),  # assume live if never reported
+        })
+    return jsonify({"poles": pole_list})
 
 
 # ---- Simulator endpoints: this is how we (and the evaluator) test the system ----

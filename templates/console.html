@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Power Grid Operator Console</title>
+<style>
+  :root {
+    --live: #3fb950;
+    --dark: #6e7681;
+    --fault: #f85149;
+    --low-confidence: #d29922;
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --muted: #8b949e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    margin: 0;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 4px 0;
+  }
+  .subtitle {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 24px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 20px;
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+  }
+  .panel h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 14px 0;
+  }
+  .fault-card {
+    border: 1px solid var(--fault);
+    background: rgba(248,81,73,0.08);
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .fault-card .span {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .fault-card .meta {
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 6px;
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge.high { background: rgba(63,185,80,0.15); color: var(--live); }
+  .badge.low { background: rgba(210,153,34,0.15); color: var(--low-confidence); }
+  .empty-state {
+    color: var(--muted);
+    font-size: 13px;
+    padding: 20px 0;
+    text-align: center;
+  }
+  .pole-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .pole-row:last-child { border-bottom: none; }
+  .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    display: inline-block; margin-right: 8px;
+  }
+  .dot.live { background: var(--live); }
+  .dot.dark { background: var(--dark); }
+  .controls {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  select, button {
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  button {
+    cursor: pointer;
+    font-weight: 600;
+  }
+  button.inject { border-color: var(--fault); color: var(--fault); }
+  button.repair { border-color: var(--live); color: var(--live); }
+  .refresh-note {
+    color: var(--muted);
+    font-size: 11px;
+    margin-top: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Power Grid Operator Console</h1>
+<div class="subtitle">Subdivision F-07-03 · live view, refreshes every 5s</div>
+
+<div class="grid">
+
+  <div class="panel">
+    <h2>Active Faults</h2>
+    <div id="faults-list"><div class="empty-state">Loading…</div></div>
+  </div>
+
+  <div class="panel">
+    <h2>Pole Status</h2>
+    <div id="poles-list"><div class="empty-state">Loading…</div></div>
+
+    <h2 style="margin-top:20px;">Simulator</h2>
+    <div class="controls">
+      <select id="pole-select"></select>
+      <button class="inject" onclick="injectFault()">Inject Fault</button>
+      <button class="repair" onclick="repairFault()">Repair</button>
+    </div>
+    <div class="refresh-note">Simulator lets you test the pipeline without real hardware.</div>
+  </div>
+
+</div>
+
+<script>
+async function fetchJSON(url, options) {
+  const res = await fetch(url, options);
+  return res.json();
+}
+
+async function refreshFaults() {
+  const data = await fetchJSON('/faults');
+  const container = document.getElementById('faults-list');
+  const faults = data.faults || [];
+
+  if (faults.length === 0) {
+    container.innerHTML = '<div class="empty-state">No active faults. Grid is healthy.</div>';
+    return;
+  }
+
+  container.innerHTML = faults.map(f => `
+    <div class="fault-card">
+      <div class="span">${f.span}</div>
+      <div class="meta">
+        <span>${f.downstream_affected} pole(s) affected</span>
+        <span class="badge ${f.confidence === 'high' ? 'high' : 'low'}">
+          ${f.confidence === 'high' ? 'HIGH CONFIDENCE' : 'LOW - INFERRED TOPOLOGY'}
+        </span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function refreshPoles() {
+  const data = await fetchJSON('/poles');
+  const poles = data.poles || [];
+  const container = document.getElementById('poles-list');
+
+  container.innerHTML = poles.map(p => `
+    <div class="pole-row">
+      <span><span class="dot ${p.energized ? 'live' : 'dark'}"></span>${p.pole_id}</span>
+      <span style="color:var(--muted)">${p.energized ? 'live' : 'dark'} · PIN ${p.pincode || '—'}</span>
+    </div>
+  `).join('');
+
+  const select = document.getElementById('pole-select');
+  if (select.options.length === 0) {
+    select.innerHTML = poles.map(p => `<option value="${p.pole_id}">${p.pole_id}</option>`).join('');
+  }
+}
+
+async function injectFault() {
+  const poleId = document.getElementById('pole-select').value;
+  await fetchJSON('/simulator/inject-fault', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pole_id: poleId})
+  });
+  refreshAll();
+}
+
+async function repairFault() {
+  const poleId = document.getElementById('pole-select').value;
+  await fetchJSON('/simulator/repair-fault', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({pole_id: poleId})
+  });
+  refreshAll();
+}
+
+function refreshAll() {
+  refreshFaults();
+  refreshPoles();
+}
+
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+
+</body>
+</html>
