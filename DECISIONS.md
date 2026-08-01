@@ -5,6 +5,17 @@ considered instead, and why.
 
 ---
 
+## Multi-branch simultaneous faults tested and verified
+
+The seeded `pole_registry.csv` includes a genuine branch (P-3 feeds both
+P-4→P-5→P-6 and P-7→P-8 as two independent lines), specifically to exercise
+the "multiple simultaneous faults" requirement rather than leave it
+theoretical. Injecting a fault on each branch at the same time produces two
+separate fault cards on the console, each with the correct span and
+downstream count, neither merged into the other nor mistaken for one
+incident. This was verified manually via the simulator before recording
+the demo video.
+
 ## Ticket lifecycle not implemented as a persisted state machine
 
 **Chose:** Faults are computed live from telemetry on every request/poll,
