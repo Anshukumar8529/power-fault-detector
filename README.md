@@ -82,4 +82,4 @@ curl -X POST http://localhost:5000/simulator/repair-fault \
 
 ## Demo video
 
-[link to be added]
+https://drive.google.com/file/d/1CFJ2rAWBlZHwpW-sdR4_GaKizwUUsUqd/view?usp=sharing
